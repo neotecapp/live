@@ -30,6 +30,7 @@ app.use(express.static('public')); // Assuming index.html and app.js will be mov
 wss.on('connection', async (ws) => {
     console.log('Client connected via WebSocket');
     let liveSession;
+    let isLiveSessionOpen = false;
 
     try {
         liveSession = await ai.live.connect({
@@ -38,6 +39,7 @@ wss.on('connection', async (ws) => {
             callbacks: {
                 onopen: () => {
                     console.log('Live API session opened.');
+                    isLiveSessionOpen = true; // Set the flag
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session opened.' }));
                 },
                 onmessage: (message) => {
@@ -45,8 +47,10 @@ wss.on('connection', async (ws) => {
                     // console.debug('Live API message:', JSON.stringify(message, null, 2));
                     if (message.data) { // Audio data from AI
                         // The 'data' field contains base64 encoded audio
+                        console.log('[AI -> Client] Sending audio data to client. Approximate size (base64):', message.data.length);
                         ws.send(JSON.stringify({ type: 'audio_data', data: message.data }));
                     } else if (message.serverContent) {
+                        console.log('[AI -> Server] Received serverContent from AI:', JSON.stringify(message.serverContent, null, 2));
                         if (message.serverContent.outputTranscription) {
                             console.log('AI Output Transcription:', message.serverContent.outputTranscription.text);
                             // We are not displaying transcription in this app, but logging it.
@@ -64,14 +68,16 @@ wss.on('connection', async (ws) => {
                     // Handle other message types like toolCall, usageMetadata, etc. if needed
                 },
                 onerror: (e) => {
-                    console.error('Live API Error:', e.message);
+                    console.error('[Live API Error] Full error object:', JSON.stringify(e, null, 2));
+                    isLiveSessionOpen = false; // Reset the flag
                     ws.send(JSON.stringify({ type: 'error', message: `AI Error: ${e.message}` }));
                     if (liveSession) {
-                        liveSession.close();
+                        liveSession.close(); // Ensure close is called if it exists
                     }
                 },
                 onclose: (e) => {
                     console.log('Live API session closed.', e ? e.reason : '');
+                    isLiveSessionOpen = false; // Reset the flag
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session closed.' }));
                 },
             },
@@ -87,33 +93,43 @@ wss.on('connection', async (ws) => {
     }
 
     ws.on('message', (message) => {
-        // This receives messages from the client (our web app)
-        // Assuming client sends raw binary audio data (ArrayBuffer)
-        // The liveSession object from @google/genai v1.3.0 uses a standard WebSocket connection.
-        // .isOpen() is not a valid method; .conn.readyState is used instead.
-        if (liveSession && liveSession.conn.readyState === WebSocket.OPEN) {
-            if (message instanceof Buffer) { // Check if message is Buffer (binary data)
-                // The client-side already converts to 16-bit PCM, 16kHz, mono.
-                // The Live API expects base64 encoded audio data.
+        console.log('[Server ws.onmessage] Message received. Type:', typeof message, 'Is Buffer:', message instanceof Buffer);
+
+        // Primary check for session readiness
+        if (liveSession && isLiveSessionOpen) {
+            console.log('[Server ws.onmessage] Live session IS considered open.');
+
+            if (message instanceof Buffer) {
+                console.log('[Server ws.onmessage] Message is a Buffer. Processing audio.');
                 const base64Audio = message.toString('base64');
-                liveSession.sendRealtimeInput({
-                    audio: {
-                        data: base64Audio,
-                        mimeType: "audio/pcm;rate=16000"
-                    }
-                });
+                console.log('[Client -> AI] Processing client audio. Raw message size:', message.length, 'Base64 size:', base64Audio.length);
+                try {
+                    liveSession.sendRealtimeInput({
+                        audio: {
+                            data: base64Audio,
+                            mimeType: "audio/pcm;rate=16000"
+                        }
+                    });
+                    console.log('[Server ws.onmessage] Audio sent to AI via sendRealtimeInput.');
+                } catch (error) {
+                    console.error('[ERROR sendRealtimeInput] Synchronous error during sendRealtimeInput:', error);
+                }
             } else {
+                console.log('[Server ws.onmessage] Message is NOT a Buffer. Attempting to parse as JSON. Content:', message.toString());
                 try {
                     const parsedMessage = JSON.parse(message);
+                    console.log('[Server ws.onmessage] Parsed JSON message:', parsedMessage);
                     if (parsedMessage.type === 'control' && parsedMessage.command === 'end_session_ack') {
-                         console.log("Client acknowledged session end. Closing Live API session.");
-                         if (liveSession) liveSession.close();
+                        console.log("Client acknowledged session end. Closing Live API session.");
+                        if (liveSession) liveSession.close();
                     }
                     // Handle other JSON messages if any
                 } catch (e) {
-                    console.log("Received non-binary message from client:", message.toString());
+                    console.error("[Server ws.onmessage] Failed to parse message as JSON or unknown text message type. Error:", e, "Original message:", message.toString());
                 }
             }
+        } else {
+            console.log('[Server ws.onmessage] Live session not considered open. isLiveSessionOpen:', isLiveSessionOpen, 'liveSession exists:', !!liveSession);
         }
     });
 

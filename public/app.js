@@ -27,23 +27,32 @@ async function startSession() {
     try {
         // Initialize microphone input
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        console.log("Microphone access granted and stream obtained.");
         statusDiv.textContent = 'Microphone access granted.';
 
         // Use a single AudioContext for both input and output
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log("AudioContext created.");
 
         // --- Input setup ---
         mediaStreamSource = audioContext.createMediaStreamSource(localStream);
         const bufferSize = 4096; // Process in chunks
         scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1); // 1 input channel, 1 output channel
+        console.log("ScriptProcessor created.");
 
         scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+            console.log("scriptProcessor.onaudioprocess called.");
             const inputBuffer = audioProcessingEvent.inputBuffer;
             const inputData = inputBuffer.getChannelData(0);
+            console.log("Preparing PCM data.");
             const pcmData = downsampleAndConvertTo16BitPCM(inputData, audioContext.sampleRate, TARGET_SAMPLE_RATE);
 
+            console.log("Checking WebSocket state:", webSocket ? webSocket.readyState : "webSocket is null");
             if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                console.log("Attempting to send pcmData over WebSocket.");
                 webSocket.send(pcmData); // Send raw ArrayBuffer
+            } else {
+                console.log("WebSocket not open or not available. State:", webSocket ? webSocket.readyState : "webSocket is null");
             }
         };
         mediaStreamSource.connect(scriptProcessor);
@@ -53,6 +62,7 @@ async function startSession() {
         const gainNode = audioContext.createGain();
         gainNode.gain.setValueAtTime(0, audioContext.currentTime); // Mute local playback
         scriptProcessor.connect(gainNode);
+        console.log("ScriptProcessor connected to gainNode.");
         gainNode.connect(audioContext.destination);
 
 
@@ -115,7 +125,7 @@ async function startSession() {
         };
 
     } catch (err) {
-        console.error('Error starting session:', err);
+        console.error("Error in startSession:", err);
         statusDiv.textContent = `Error: ${err.message}`;
         endSessionCleanup();
         startButton.disabled = false;
