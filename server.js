@@ -1,3 +1,4 @@
+const fs = require('fs');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -17,6 +18,18 @@ const wss = new WebSocket.Server({ server });
 
 const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
 const modelName = 'gemini-2.5-flash-preview-native-audio-dialog'; // As per requirements
+
+// Read system instruction from file
+let systemInstructionContent = "";
+try {
+    systemInstructionContent = fs.readFileSync('system-instructions.txt', 'utf8');
+    console.log("Successfully read system instructions from file.");
+} catch (err) {
+    console.error("Error reading system-instructions.txt:", err.message);
+    console.log("Proceeding without custom system instructions.");
+    // systemInstructionContent will remain ""
+}
+
 const liveConfig = {
     responseModalities: [Modality.AUDIO],
     speechConfig: {
@@ -25,11 +38,14 @@ const liveConfig = {
                 voiceName: "Enceladus"
             }
         }
-    }
-    // Consider adding other configs like systemInstruction, affectiveDialog, etc. later if needed
-    // systemInstruction: "You are a helpful voice assistant.",
+    },
+    // Consider adding other configs like affectiveDialog, etc. later if needed
     // enableAffectiveDialog: true, // Requires v1alpha API version
 };
+
+if (systemInstructionContent) {
+    liveConfig.systemInstruction = systemInstructionContent.trim();
+}
 
 // Serve static files (index.html, app.js)
 app.use(express.static('public')); // Assuming index.html and app.js will be moved to a 'public' folder
