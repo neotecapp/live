@@ -15,19 +15,10 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY, httpOptions: { "apiVersion": "v1alpha" } });
+const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
 const modelName = 'gemini-2.5-flash-preview-native-audio-dialog'; // As per requirements
 const liveConfig = {
-    responseModalities: [Modality.AUDIO]
-    // realtimeInputConfig: {
-    //     automaticActivityDetection: {
-    //         disabled: false,
-    //         startOfSpeechSensitivity: require('@google/genai').StartSensitivity.START_SENSITIVITY_HIGH,
-    //         endOfSpeechSensitivity: require('@google/genai').EndSensitivity.END_SENSITIVITY_HIGH,
-    //         prefixPaddingMs: 20, // Explicitly set
-    //         silenceDurationMs: 50, // Very short
-    //     }
-    // }
+    responseModalities: [Modality.AUDIO],
     // Consider adding other configs like systemInstruction, affectiveDialog, etc. later if needed
     // systemInstruction: "You are a helpful voice assistant.",
     // enableAffectiveDialog: true, // Requires v1alpha API version
@@ -52,35 +43,29 @@ wss.on('connection', async (ws) => {
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session opened.' }));
                 },
                 onmessage: (message) => {
-                    if (!message.data) { // Only log if it's not an audio data message
-                        console.log('[Live API CTRL Message Received] Type:', message.constructor.name, 'Content:', JSON.stringify(message, null, 2));
-                    }
-
-                    if (message.data) {
-                        // Verbose logging for audio data can be silenced for this test:
-                        // console.log('[AI -> Client] Sending audio data to client. Approximate size (base64):', message.data.length);
+                    // This callback receives messages from the Live API
+                    // console.debug('Live API message:', JSON.stringify(message, null, 2));
+                    if (message.data) { // Audio data from AI
+                        // The 'data' field contains base64 encoded audio
+                        console.log('[AI -> Client] Sending audio data to client. Approximate size (base64):', message.data.length);
                         ws.send(JSON.stringify({ type: 'audio_data', data: message.data }));
                     } else if (message.serverContent) {
-                        // This log will be caught by the !message.data above, but specific parsing is good.
-                        // console.log('[AI -> Server] Received serverContent from AI:', JSON.stringify(message.serverContent, null, 2)); // This is now part of the generic CTRL message log
+                        console.log('[AI -> Server] Received serverContent from AI:', JSON.stringify(message.serverContent, null, 2));
                         if (message.serverContent.outputTranscription) {
                             console.log('AI Output Transcription:', message.serverContent.outputTranscription.text);
+                            // We are not displaying transcription in this app, but logging it.
                         }
                         if (message.serverContent.turnComplete) {
-                            console.log('>>> AI turn complete. <<<');
+                            console.log('AI turn complete.');
                         }
                         if (message.serverContent.interrupted) {
-                            console.log('>>> AI generation was interrupted. <<<');
-                        }
-                        if (message.serverContent.generationComplete) { // Added this specific log
-                            console.log('>>> AI generation complete. <<<');
+                            console.log('AI generation was interrupted.');
                         }
                     } else if (message.error) {
-                        // This log will also be caught by !message.data if it's not an error object directly on message itself.
-                        console.error('Live API Error:', message.error.message); // Assuming error is structured like this.
+                        console.error('Live API Error:', message.error.message);
                         ws.send(JSON.stringify({ type: 'error', message: `AI Error: ${message.error.message}` }));
                     }
-                    // Other non-audio, non-serverContent, non-error messages will be caught by the first conditional log.
+                    // Handle other message types like toolCall, usageMetadata, etc. if needed
                 },
                 onerror: (e) => {
                     console.error('[Live API Error] Full error object:', JSON.stringify(e, null, 2));
