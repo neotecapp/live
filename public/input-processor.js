@@ -2,7 +2,7 @@
 
 // Constants for audio processing
 const TARGET_SAMPLE_RATE = 16000;
-const PROCESSOR_BUFFER_SIZE = 4096; // How many samples to collect before processing and sending
+const PROCESSOR_BUFFER_SIZE = 256; // How many samples to collect before processing and sending
 
 class InputProcessor extends AudioWorkletProcessor {
   constructor(options) {
