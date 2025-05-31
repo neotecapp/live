@@ -4,15 +4,18 @@ const statusDiv = document.getElementById('status');
 
 let audioContext; // For microphone input processing AND playback
 let mediaStreamSource;
-let scriptProcessor;
+let inputNode; // For AudioWorkletNode
 let localStream;
 let webSocket;
 
-const TARGET_SAMPLE_RATE = 16000;
+const TARGET_SAMPLE_RATE = 16000; // Still used by input-processor.js
 const PLAYBACK_SAMPLE_RATE = 24000; // Live API audio output is 24kHz
+const PLAYBACK_BUFFER_TARGET_DURATION_MS = 500; // Target 0.5 seconds of audio per playback chunk
+const MIN_SAMPLES_TO_START_PLAYBACK = PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000);
 
-// Audio playback queue and state
-let audioQueue = [];
+
+// Audio playback state
+let clientPlaybackBuffer = []; // Stores Float32 samples for playback
 let isPlaying = false;
 let audioPlaybackNode; // To keep track of the current source node for playback
 
@@ -36,35 +39,53 @@ async function startSession() {
 
         // --- Input setup ---
         mediaStreamSource = audioContext.createMediaStreamSource(localStream);
-        const bufferSize = 4096; // Process in chunks
-        scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1); // 1 input channel, 1 output channel
-        console.log("ScriptProcessor created.");
 
-        scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-            console.log("scriptProcessor.onaudioprocess called.");
-            const inputBuffer = audioProcessingEvent.inputBuffer;
-            const inputData = inputBuffer.getChannelData(0);
-            console.log("Preparing PCM data.");
-            const pcmData = downsampleAndConvertTo16BitPCM(inputData, audioContext.sampleRate, TARGET_SAMPLE_RATE);
+        // --- AudioWorklet Input setup ---
+        if (!audioContext.audioWorklet) {
+            console.error("AudioWorklet is not supported by this browser.");
+            statusDiv.textContent = "AudioWorklet not supported. Please use a modern browser.";
+            endSessionCleanup();
+            return;
+        }
 
-            console.log("Checking WebSocket state:", webSocket ? webSocket.readyState : "webSocket is null");
-            if (webSocket && webSocket.readyState === WebSocket.OPEN) {
-                console.log("Attempting to send pcmData over WebSocket.");
-                webSocket.send(pcmData); // Send raw ArrayBuffer
-            } else {
-                console.log("WebSocket not open or not available. State:", webSocket ? webSocket.readyState : "webSocket is null");
+        try {
+            await audioContext.audioWorklet.addModule('input-processor.js');
+            console.log("AudioWorklet module 'input-processor.js' loaded.");
+        } catch (e) {
+            console.error("Failed to load audio worklet module:", e);
+            statusDiv.textContent = "Error loading audio processor. See console.";
+            endSessionCleanup();
+            return;
+        }
+
+        inputNode = new AudioWorkletNode(audioContext, 'input-processor', {
+            processorOptions: {
+                inputSampleRate: audioContext.sampleRate
+                // PROCESSOR_BUFFER_SIZE and TARGET_SAMPLE_RATE are constants within the worklet
+            }
+        });
+        console.log("AudioWorkletNode 'input-processor' created.");
+
+        inputNode.port.onmessage = (event) => {
+            // event.data is the ArrayBuffer (PCM data) from the worklet
+            if (event.data) {
+                if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                    webSocket.send(event.data); // Send raw ArrayBuffer
+                } else {
+                    // console.log("WebSocket not open for sending worklet data. State:", webSocket ? webSocket.readyState : "webSocket is null");
+                }
             }
         };
-        mediaStreamSource.connect(scriptProcessor);
-        // It's important to connect the scriptProcessor to the destination to keep it processing.
-        // If you don't want to hear your own microphone, you can connect it to a GainNode with gain 0.
-        // For simplicity now, connecting to destination. This might cause echo if speakers are loud.
-        const gainNode = audioContext.createGain();
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime); // Mute local playback
-        scriptProcessor.connect(gainNode);
-        console.log("ScriptProcessor connected to gainNode.");
-        gainNode.connect(audioContext.destination);
 
+        mediaStreamSource.connect(inputNode);
+
+        // To prevent local echo and ensure the graph keeps processing,
+        // connect the inputNode to a GainNode with gain 0, then to destination.
+        const gainNode = audioContext.createGain();
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime); // Mute local feedback
+        inputNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        console.log("AudioWorkletNode connected via muted GainNode to destination.");
 
         // --- WebSocket setup ---
         // Determine WebSocket protocol (ws or wss)
@@ -152,10 +173,11 @@ function endSessionCleanup() {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
-    if (scriptProcessor) {
-        scriptProcessor.disconnect();
-        scriptProcessor.onaudioprocess = null;
-        scriptProcessor = null;
+    if (inputNode) {
+        inputNode.port.onmessage = null; // Remove message handler
+        inputNode.disconnect();
+        inputNode = null;
+        console.log("InputNode disconnected and cleaned up.");
     }
     if (mediaStreamSource) {
         mediaStreamSource.disconnect();
@@ -168,7 +190,7 @@ function endSessionCleanup() {
         audioPlaybackNode.disconnect();
         audioPlaybackNode = null;
     }
-    audioQueue = [];
+    clientPlaybackBuffer = []; // Reset playback buffer
     isPlaying = false;
 
     if (audioContext && audioContext.state !== 'closed') {
@@ -226,30 +248,53 @@ function queueAudio(arrayBuffer) {
         float32Array[i] = int16Array[i] / 32768.0; // Convert to [-1.0, 1.0] range
     }
 
-    if (audioContext && audioContext.state === 'running') {
-        const audioBuffer = audioContext.createBuffer(1, float32Array.length, PLAYBACK_SAMPLE_RATE); // 1 channel, length, sampleRate
-        audioBuffer.copyToChannel(float32Array, 0);
-        audioQueue.push(audioBuffer);
-        if (!isPlaying) {
-            playNextInQueue();
-        }
-    } else {
-        console.warn("AudioContext not available or not running. Cannot play audio.");
+    // Add new samples to the global playback buffer
+    // Consider clientPlaybackBuffer.push(...float32Array); for potentially better performance
+    for (let i = 0; i < float32Array.length; i++) {
+        clientPlaybackBuffer.push(float32Array[i]);
     }
+
+    schedulePlayback(); // Attempt to play if conditions are met
 }
 
-function playNextInQueue() {
-    if (audioQueue.length === 0 || !audioContext || audioContext.state !== 'running') {
-        isPlaying = false;
-        return;
+function schedulePlayback() {
+    if (isPlaying || !audioContext || audioContext.state !== 'running') {
+        return; // Already playing or audio context not ready
     }
-    isPlaying = true;
-    const audioBufferToPlay = audioQueue.shift();
-    audioPlaybackNode = audioContext.createBufferSource();
-    audioPlaybackNode.buffer = audioBufferToPlay;
-    audioPlaybackNode.connect(audioContext.destination);
-    audioPlaybackNode.onended = playNextInQueue; // Play next when current finishes
-    audioPlaybackNode.start();
+
+    if (clientPlaybackBuffer.length >= MIN_SAMPLES_TO_START_PLAYBACK) {
+        isPlaying = true;
+
+        // Determine chunk size to play
+        // Play up to 2x target duration to avoid too many small chunks if data arrives fast,
+        // but not less than MIN_SAMPLES_TO_START_PLAYBACK unless it's all that's left.
+        const samplesToPlayCount = Math.min(clientPlaybackBuffer.length, Math.max(MIN_SAMPLES_TO_START_PLAYBACK, PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000) * 2));
+
+        // If buffer has less than MIN_SAMPLES_TO_START_PLAYBACK but is not empty, and we decided to play (e.g. end of stream),
+        // this logic might need adjustment, but current check `clientPlaybackBuffer.length >= MIN_SAMPLES_TO_START_PLAYBACK` handles this.
+
+        const samplesToPlay = new Float32Array(clientPlaybackBuffer.splice(0, samplesToPlayCount));
+
+        if (samplesToPlay.length === 0) {
+            isPlaying = false; // Should not happen if MIN_SAMPLES_TO_START_PLAYBACK > 0
+            return;
+        }
+
+        const audioBuffer = audioContext.createBuffer(1, samplesToPlay.length, PLAYBACK_SAMPLE_RATE);
+        audioBuffer.copyToChannel(samplesToPlay, 0);
+
+        audioPlaybackNode = audioContext.createBufferSource();
+        audioPlaybackNode.buffer = audioBuffer;
+        audioPlaybackNode.connect(audioContext.destination);
+
+        audioPlaybackNode.onended = () => {
+            isPlaying = false;
+            // Immediately try to schedule next chunk if more data is available
+            schedulePlayback();
+        };
+
+        audioPlaybackNode.start();
+    }
 }
 
 // Initial state
