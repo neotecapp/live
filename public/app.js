@@ -69,6 +69,7 @@ async function startSession() {
         inputNode.port.onmessage = (event) => {
             // event.data is the ArrayBuffer (PCM data) from the worklet
             if (event.data) {
+                console.log(`[Client Audio] Sending audio chunk to server. Timestamp: ${Date.now()}, Size: ${event.data.byteLength}`);
                 if (webSocket && webSocket.readyState === WebSocket.OPEN) {
                     webSocket.send(event.data); // Send raw ArrayBuffer
                 } else {
