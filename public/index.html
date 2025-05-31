@@ -4,68 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rev</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-        .container {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        h1 {
-            margin-bottom: 1.5rem;
-            color: #333;
-        }
-        button {
-            padding: 0.8rem 1.5rem;
-            font-size: 1rem;
-            margin: 0.5rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-        #startButton {
-            background-color: #4CAF50;
-            color: white;
-        }
-        #startButton:hover {
-            background-color: #45a049;
-        }
-        #endButton {
-            background-color: #f44336;
-            color: white;
-        }
-        #endButton:hover {
-            background-color: #da190b;
-        }
-        button:disabled {
-            opacity: 0.6;
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        #status {
-            margin-top: 1.5rem;
-            font-style: italic;
-            color: #555;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
     <div class="container">
-        <h1>Rev</h1>
-        <button id="startButton">Start Session</button>
-        <button id="endButton" disabled>End Session</button>
+        <h1><i class="fas fa-cogs"></i> Rev</h1>
+        <button id="startButton"><i class="fas fa-play"></i> Start Session</button>
+        <button id="endButton" disabled><i class="fas fa-stop"></i> End Session</button>
         <div id="status">Ready to start...</div>
     </div>
     <script src="app.js"></script>
