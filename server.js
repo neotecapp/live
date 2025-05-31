@@ -89,7 +89,9 @@ wss.on('connection', async (ws) => {
     ws.on('message', (message) => {
         // This receives messages from the client (our web app)
         // Assuming client sends raw binary audio data (ArrayBuffer)
-        if (liveSession && liveSession.isOpen()) {
+        // The liveSession object from @google/genai v1.3.0 uses a standard WebSocket connection.
+        // .isOpen() is not a valid method; .conn.readyState is used instead.
+        if (liveSession && liveSession.conn.readyState === WebSocket.OPEN) {
             if (message instanceof Buffer) { // Check if message is Buffer (binary data)
                 // The client-side already converts to 16-bit PCM, 16kHz, mono.
                 // The Live API expects base64 encoded audio data.
