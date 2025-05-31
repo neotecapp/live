@@ -19,6 +19,13 @@ const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
 const modelName = 'gemini-2.5-flash-preview-native-audio-dialog'; // As per requirements
 const liveConfig = {
     responseModalities: [Modality.AUDIO],
+    speechConfig: {
+        voiceConfig: {
+            prebuiltVoiceConfig: {
+                voiceName: "Enceladus"
+            }
+        }
+    }
     // Consider adding other configs like systemInstruction, affectiveDialog, etc. later if needed
     // systemInstruction: "You are a helpful voice assistant.",
     // enableAffectiveDialog: true, // Requires v1alpha API version
