@@ -16,6 +16,7 @@ body {
     text-align: center;
     max-width: 550px; /* Added max-width */
     width: 90%; /* Added width */
+    position: relative; /* Added for theme switch positioning */
 }
 h1 {
     margin-bottom: 2rem; /* Updated margin-bottom */
@@ -93,3 +94,113 @@ h1 .fas.fa-cogs {
 button .fas {
     margin-right: 0.5rem; /* Consistent spacing */
 }
+
+/* Theme Switch Styles */
+.theme-switch-label {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: inline-block;
+    width: 50px; /* Width of the switch */
+    height: 26px; /* Height of the switch */
+    cursor: pointer;
+}
+
+#theme-toggle {
+    display: none; /* Hide the default checkbox */
+}
+
+.slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc; /* Default background of the track */
+    border-radius: 26px; /* Make it pill-shaped */
+    transition: .4s;
+}
+
+.slider::before {
+    position: absolute;
+    content: "";
+    height: 20px; /* Height of the knob */
+    width: 20px; /* Width of the knob */
+    left: 3px; /* Position from the left */
+    bottom: 3px; /* Position from the bottom */
+    background-color: white; /* Color of the knob */
+    border-radius: 50%; /* Make it circular */
+    transition: .4s;
+}
+
+#theme-toggle:checked + .slider {
+    background-color: #3498db; /* Color of the track when active */
+}
+
+#theme-toggle:checked + .slider::before {
+    transform: translateX(24px); /* Move the knob to the right */
+}
+
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .container {
+    background-color: #2a2a2a;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Darker shadow, or a subtle light one if preferred */
+    /* Consider a light border if shadow doesn't look good: border: 1px solid #444; */
+}
+
+body.dark-mode h1 {
+    color: #f0f0f0;
+}
+
+body.dark-mode #startButton {
+    background-color: #3a7ca5; /* A dark-mode friendly blue */
+    color: #f5f5f5;
+}
+
+body.dark-mode #startButton:hover {
+    background-color: #4a8cb5;
+}
+
+body.dark-mode #endButton {
+    background-color: #c0392b; /* Existing red, ensure text is light */
+    color: #f5f5f5;
+}
+
+body.dark-mode #endButton:hover {
+    background-color: #d0493b;
+}
+
+body.dark-mode button:disabled {
+    background-color: #444;
+    color: #888;
+    opacity: 0.7; /* Ensure it looks disabled */
+}
+
+body.dark-mode #status {
+    color: #aaa;
+}
+
+body.dark-mode h1 .fas.fa-cogs {
+    color: #3a7ca5; /* Match dark mode start button color */
+}
+
+/* Theme switch in dark mode */
+body.dark-mode .slider {
+    background-color: #555; /* Darker track for dark mode */
+}
+
+body.dark-mode #theme-toggle:checked + .slider {
+    background-color: #3a7ca5; /* Active track color in dark mode */
+}
+
+/* Optional: If icons inside buttons need specific color adjustment in dark mode,
+   though they should inherit the button's text color.
+body.dark-mode button .fas {
+    color: #f5f5f5;
+}
+*/

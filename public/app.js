@@ -299,3 +299,46 @@ function schedulePlayback() {
 
 // Initial state
 endButton.disabled = true;
+
+// Theme Switching Logic
+document.addEventListener('DOMContentLoaded', () => {
+    const themeToggle = document.getElementById('theme-toggle');
+    const body = document.body;
+
+    function applyTheme(theme) {
+        if (theme === 'dark') {
+            body.classList.add('dark-mode');
+            if (themeToggle) themeToggle.checked = true;
+        } else { // 'light' or any other case
+            body.classList.remove('dark-mode');
+            if (themeToggle) themeToggle.checked = false;
+        }
+    }
+
+    if (themeToggle) {
+        themeToggle.addEventListener('change', () => {
+            if (themeToggle.checked) {
+                applyTheme('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                applyTheme('light');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+    }
+
+    // Load saved theme on page load
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+        applyTheme(savedTheme);
+    } else {
+        // Default to light theme if no preference is saved
+        // Or, you could check for system preference here:
+        // if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        //     applyTheme('dark');
+        // } else {
+        //     applyTheme('light');
+        // }
+        applyTheme('light'); // Default to light for now
+    }
+});
