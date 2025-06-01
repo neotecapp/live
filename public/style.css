@@ -47,7 +47,10 @@ h1 {
     font-size: 2.5rem; 
     font-weight: 600;
     transition: color 0.3s;
-    text-align: center;
+    text-align: center; /* May be overridden by flex, but good fallback */
+    display: flex;
+    align-items: center;
+    justify-content: center; /* To keep h1 content centered */
 }
 
 #sessionToggleButton {
@@ -106,11 +109,10 @@ h1 {
     }
 }
 
-h1 .fas.fa-cogs {
-    margin-right: 0.75rem; 
-    color: var(--icon-color-light);
-    transition: color 0.3s;
-    font-size: 2.25rem; 
+#rev-logo-h1 {
+    width: 5rem; /* Updated size */
+    height: 5rem; /* Updated size */
+    margin-right: 0.75rem; /* Original margin */
 }
 
 .theme-switch-label {
@@ -190,10 +192,6 @@ body.dark-mode #sessionToggleButton:hover:not(:disabled) {
 }
 body.dark-mode #sessionToggleButton.active-session:hover:not(:disabled) {
     background-color: var(--stop-hover-dark);
-}
-
-body.dark-mode h1 .fas.fa-cogs {
-    color: var(--icon-color-dark);
 }
 
 body.dark-mode .slider {
