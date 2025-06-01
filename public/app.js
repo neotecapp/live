@@ -244,7 +244,7 @@ function endSessionCleanup() {
     sessionToggleButton.disabled = false;
     sessionToggleButton.classList.remove('loading-state');
     sessionToggleButton.classList.remove('active-session');
-    sessionToggleButton.innerHTML = '<i class="fas fa-play"></i>';
+    sessionToggleButton.innerHTML = '<i class="fas fa-microphone"></i>';
     sessionToggleButton.setAttribute('aria-label', 'Start session');
     console.log('Session ended and cleaned up.');
 }
