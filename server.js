@@ -70,12 +70,12 @@ wss.on('connection', async (ws) => {
                     // console.debug('Live API message:', JSON.stringify(message, null, 2));
                     if (message.data) { // Audio data from AI
                         // The 'data' field contains base64 encoded audio
-                        console.log('[AI -> Client] Sending audio data to client. Approximate size (base64):', message.data.length);
+                        // console.log('[AI -> Client] Sending audio data to client. Approximate size (base64):', message.data.length);
                         ws.send(JSON.stringify({ type: 'audio_data', data: message.data }));
                     } else if (message.serverContent) {
-                        console.log('[AI -> Server] Received serverContent from AI:', JSON.stringify(message.serverContent, null, 2));
+                        // console.log('[AI -> Server] Received serverContent from AI:', JSON.stringify(message.serverContent, null, 2));
                         if (message.serverContent.outputTranscription) {
-                            console.log('AI Output Transcription:', message.serverContent.outputTranscription.text);
+                            // console.log('AI Output Transcription:', message.serverContent.outputTranscription.text);
                             // We are not displaying transcription in this app, but logging it.
                         }
                         if (message.serverContent.turnComplete) {
@@ -116,16 +116,16 @@ wss.on('connection', async (ws) => {
     }
 
     ws.on('message', (message) => {
-        console.log('[Server ws.onmessage] Message received. Type:', typeof message, 'Is Buffer:', message instanceof Buffer);
+        // console.log('[Server ws.onmessage] Message received. Type:', typeof message, 'Is Buffer:', message instanceof Buffer);
 
         // Primary check for session readiness
         if (liveSession && isLiveSessionOpen) {
-            console.log('[Server ws.onmessage] Live session IS considered open.');
+            // console.log('[Server ws.onmessage] Live session IS considered open.');
 
             if (message instanceof Buffer) {
-                console.log('[Server ws.onmessage] Message is a Buffer. Processing audio.');
+                // console.log('[Server ws.onmessage] Message is a Buffer. Processing audio.');
                 const base64Audio = message.toString('base64');
-                console.log('[Client -> AI] Processing client audio. Raw message size:', message.length, 'Base64 size:', base64Audio.length);
+                // console.log('[Client -> AI] Processing client audio. Raw message size:', message.length, 'Base64 size:', base64Audio.length);
                 try {
                     liveSession.sendRealtimeInput({
                         audio: {
@@ -133,7 +133,7 @@ wss.on('connection', async (ws) => {
                             mimeType: "audio/pcm;rate=16000"
                         }
                     });
-                    console.log('[Server ws.onmessage] Audio sent to AI via sendRealtimeInput.');
+                    // console.log('[Server ws.onmessage] Audio sent to AI via sendRealtimeInput.');
                 } catch (error) {
                     console.error('[ERROR sendRealtimeInput] Synchronous error during sendRealtimeInput:', error);
                 }
