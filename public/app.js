@@ -1,7 +1,13 @@
-const startButton = document.getElementById('startButton');
-const endButton = document.getElementById('endButton');
-const statusDiv = document.getElementById('status');
+// Get DOM elements
+const themeToggle = document.getElementById('theme-toggle');
+const sessionToggleButton = document.getElementById('sessionToggleButton');
+const body = document.body;
 
+// Session state variables
+let isSessionActive = false;
+let isLoadingSession = false;
+
+// Audio context and WebSocket variables
 let audioContext; // For microphone input processing AND playback
 let mediaStreamSource;
 let inputNode; // For AudioWorkletNode
@@ -13,25 +19,68 @@ const PLAYBACK_SAMPLE_RATE = 24000; // Live API audio output is 24kHz
 const PLAYBACK_BUFFER_TARGET_DURATION_MS = 500; // Target 0.5 seconds of audio per playback chunk
 const MIN_SAMPLES_TO_START_PLAYBACK = PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000);
 
-
 // Audio playback state
 let clientPlaybackBuffer = []; // Stores Float32 samples for playback
 let isPlaying = false;
 let audioPlaybackNode; // To keep track of the current source node for playback
 
-startButton.addEventListener('click', startSession);
-endButton.addEventListener('click', endSession);
+// --- Theme Toggle Functionality ---
+function applyTheme(theme) {
+    if (theme === 'dark') {
+        body.classList.add('dark-mode');
+        themeToggle.checked = true;
+    } else {
+        body.classList.remove('dark-mode');
+        themeToggle.checked = false;
+    }
+}
+
+// Initialize theme
+const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+applyTheme(savedTheme);
+
+themeToggle.addEventListener('change', function() {
+    if (this.checked) {
+        applyTheme('dark');
+        localStorage.setItem('theme', 'dark');
+    } else {
+        applyTheme('light');
+        localStorage.setItem('theme', 'light');
+    }
+});
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    const newColorScheme = e.matches ? 'dark' : 'light';
+    applyTheme(newColorScheme);
+    localStorage.setItem('theme', newColorScheme);
+});
+
+// --- Session Toggle Button Functionality ---
+sessionToggleButton.addEventListener('click', function() {
+    if (isLoadingSession) {
+        return;
+    }
+
+    if (isSessionActive) {
+        // Ending session
+        endSession();
+    } else {
+        // Starting session
+        startSession();
+    }
+});
 
 async function startSession() {
-    statusDiv.textContent = 'Starting session...';
-    startButton.disabled = true;
-    // endButton will be enabled by server 'AI session opened' message
+    isLoadingSession = true;
+    sessionToggleButton.disabled = true;
+    sessionToggleButton.classList.add('loading-state');
+    sessionToggleButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    sessionToggleButton.setAttribute('aria-label', 'Loading session...');
 
     try {
         // Initialize microphone input
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         console.log("Microphone access granted and stream obtained.");
-        statusDiv.textContent = 'Microphone access granted.';
 
         // Use a single AudioContext for both input and output
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -43,7 +92,6 @@ async function startSession() {
         // --- AudioWorklet Input setup ---
         if (!audioContext.audioWorklet) {
             console.error("AudioWorklet is not supported by this browser.");
-            statusDiv.textContent = "AudioWorklet not supported. Please use a modern browser.";
             endSessionCleanup();
             return;
         }
@@ -53,7 +101,6 @@ async function startSession() {
             console.log("AudioWorklet module 'input-processor.js' loaded.");
         } catch (e) {
             console.error("Failed to load audio worklet module:", e);
-            statusDiv.textContent = "Error loading audio processor. See console.";
             endSessionCleanup();
             return;
         }
@@ -61,26 +108,21 @@ async function startSession() {
         inputNode = new AudioWorkletNode(audioContext, 'input-processor', {
             processorOptions: {
                 inputSampleRate: audioContext.sampleRate
-                // PROCESSOR_BUFFER_SIZE and TARGET_SAMPLE_RATE are constants within the worklet
             }
         });
         console.log("AudioWorkletNode 'input-processor' created.");
 
         inputNode.port.onmessage = (event) => {
-            // event.data is the ArrayBuffer (PCM data) from the worklet
             if (event.data) {
                 if (webSocket && webSocket.readyState === WebSocket.OPEN) {
-                    webSocket.send(event.data); // Send raw ArrayBuffer
-                } else {
-                    // console.log("WebSocket not open for sending worklet data. State:", webSocket ? webSocket.readyState : "webSocket is null");
+                    webSocket.send(event.data);
                 }
             }
         };
 
         mediaStreamSource.connect(inputNode);
 
-        // To prevent local echo and ensure the graph keeps processing,
-        // connect the inputNode to a GainNode with gain 0, then to destination.
+        // To prevent local echo and ensure the graph keeps processing
         const gainNode = audioContext.createGain();
         gainNode.gain.setValueAtTime(0, audioContext.currentTime); // Mute local feedback
         inputNode.connect(gainNode);
@@ -88,41 +130,40 @@ async function startSession() {
         console.log("AudioWorkletNode connected via muted GainNode to destination.");
 
         // --- WebSocket setup ---
-        // Determine WebSocket protocol (ws or wss)
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
         webSocket = new WebSocket(wsUrl);
 
         webSocket.onopen = () => {
             console.log('WebSocket connection established.');
-            statusDiv.textContent = 'Connected to server. Waiting for AI...';
-            // Server will send 'AI session opened'
         };
 
         webSocket.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'audio_data') {
-                    // Received base64 encoded audio data from server
                     const audioData = base64ToArrayBuffer(message.data);
-                    // The audio from Live API is 16-bit PCM, 24kHz, mono.
                     queueAudio(audioData);
                 } else if (message.type === 'status') {
                     console.log('Status from server:', message.message);
-                    statusDiv.textContent = message.message;
                     if (message.message === 'AI session opened.') {
-                        endButton.disabled = false;
-                        statusDiv.textContent = 'Session started. Listening...';
+                        // Session successfully started
+                        isSessionActive = true;
+                        isLoadingSession = false;
+                        sessionToggleButton.disabled = false;
+                        sessionToggleButton.classList.remove('loading-state');
+                        sessionToggleButton.classList.add('active-session');
+                        sessionToggleButton.innerHTML = '<i class="fas fa-stop"></i>';
+                        sessionToggleButton.setAttribute('aria-label', 'End session');
+                        console.log('Session started successfully');
                     } else if (message.message === 'AI session closed.') {
-                        // Handle server-initiated close if needed
-                        if (!startButton.disabled) { // If we didn't initiate close
+                        if (isSessionActive) { // If we didn't initiate close
                             endSessionCleanup();
                         }
                     }
                 } else if (message.type === 'error') {
                     console.error('Error from server:', message.message);
-                    statusDiv.textContent = `Server Error: ${message.message}`;
-                    endSession(); // Or handle more gracefully
+                    endSession();
                 } else if (message.type === 'interruption') {
                     console.log('Interruption message received from server.');
                     if (audioPlaybackNode) {
@@ -132,7 +173,6 @@ async function startSession() {
                     }
                     clientPlaybackBuffer = [];
                     isPlaying = false;
-                    statusDiv.textContent = 'AI playback interrupted.';
                 }
             } catch (e) {
                 console.error("Failed to parse message from server or unknown message type:", event.data, e);
@@ -141,40 +181,26 @@ async function startSession() {
 
         webSocket.onerror = (error) => {
             console.error('WebSocket error:', error);
-            statusDiv.textContent = 'WebSocket error. Please try again.';
-            endSessionCleanup(); // Clean up resources
-            startButton.disabled = false;
-            endButton.disabled = true;
+            endSessionCleanup();
         };
 
         webSocket.onclose = (event) => {
             console.log('WebSocket connection closed:', event.reason);
-            if (!startButton.disabled) { // If not closed by user clicking "End Session"
-                statusDiv.textContent = 'Connection closed. Ready to start...';
-            }
-            endSessionCleanup(); // Ensure cleanup if connection drops
+            endSessionCleanup();
         };
 
     } catch (err) {
         console.error("Error in startSession:", err);
-        statusDiv.textContent = `Error: ${err.message}`;
         endSessionCleanup();
-        startButton.disabled = false;
-        endButton.disabled = true;
     }
 }
 
 function endSession() {
-    statusDiv.textContent = 'Ending session...';
     if (webSocket && webSocket.readyState === WebSocket.OPEN) {
-        // Optionally send a control message to server before closing
-        // webSocket.send(JSON.stringify({ type: 'control', command: 'end_session' }));
-        webSocket.close(1000, "User ended session"); // 1000 is normal closure
+        webSocket.close(1000, "User ended session");
     } else {
-        // If WebSocket is not open or already closed, just cleanup
         endSessionCleanup();
     }
-    // Cleanup will also be called by webSocket.onclose
 }
 
 function endSessionCleanup() {
@@ -184,7 +210,7 @@ function endSessionCleanup() {
         localStream = null;
     }
     if (inputNode) {
-        inputNode.port.onmessage = null; // Remove message handler
+        inputNode.port.onmessage = null;
         inputNode.disconnect();
         inputNode = null;
         console.log("InputNode disconnected and cleaned up.");
@@ -200,7 +226,7 @@ function endSessionCleanup() {
         audioPlaybackNode.disconnect();
         audioPlaybackNode = null;
     }
-    clientPlaybackBuffer = []; // Reset playback buffer
+    clientPlaybackBuffer = [];
     isPlaying = false;
 
     if (audioContext && audioContext.state !== 'closed') {
@@ -210,28 +236,15 @@ function endSessionCleanup() {
         }).catch(e => console.error("Error closing AudioContext:", e));
     }
 
-
-    startButton.disabled = false;
-    endButton.disabled = true;
-    if (statusDiv.textContent.startsWith('Ending session') || statusDiv.textContent.startsWith('Session started')) {
-       statusDiv.textContent = 'Session ended. Ready to start...';
-    }
+    // Reset button state
+    isSessionActive = false;
+    isLoadingSession = false;
+    sessionToggleButton.disabled = false;
+    sessionToggleButton.classList.remove('loading-state');
+    sessionToggleButton.classList.remove('active-session');
+    sessionToggleButton.innerHTML = '<i class="fas fa-play"></i>';
+    sessionToggleButton.setAttribute('aria-label', 'Start session');
     console.log('Session ended and cleaned up.');
-}
-
-
-function downsampleAndConvertTo16BitPCM(inputFloat32Array, inputSampleRate, outputSampleRate) {
-    const ratio = inputSampleRate / outputSampleRate;
-    const outputLength = Math.floor(inputFloat32Array.length / ratio);
-    const outputBuffer = new ArrayBuffer(outputLength * 2);
-    const outputView = new DataView(outputBuffer);
-    for (let i = 0; i < outputLength; i++) {
-        const inputIndex = Math.floor(i * ratio);
-        let sample = inputFloat32Array[inputIndex];
-        sample = Math.max(-1, Math.min(1, sample));
-        outputView.setInt16(i * 2, sample * 32767, true);
-    }
-    return outputBuffer;
 }
 
 function base64ToArrayBuffer(base64) {
@@ -241,17 +254,11 @@ function base64ToArrayBuffer(base64) {
     for (let i = 0; i < len; i++) {
         bytes[i] = binaryString.charCodeAt(i);
     }
-    // Important: The data from Live API is 16-bit PCM.
-    // We need to ensure this ArrayBuffer is interpreted correctly when creating the AudioBuffer.
-    // The `decodeAudioData` expects a full audio file format (like WAV),
-    // or raw PCM data if we construct the AudioBuffer manually.
-    // For simplicity with raw PCM, we'll construct it manually.
     return bytes.buffer;
 }
 
 function queueAudio(arrayBuffer) {
     // The received audio is 16-bit PCM, 24kHz, mono.
-    // Convert ArrayBuffer to Int16Array then to Float32Array for Web Audio API
     const int16Array = new Int16Array(arrayBuffer);
     const float32Array = new Float32Array(int16Array.length);
     for (let i = 0; i < int16Array.length; i++) {
@@ -259,7 +266,6 @@ function queueAudio(arrayBuffer) {
     }
 
     // Add new samples to the global playback buffer
-    // Consider clientPlaybackBuffer.push(...float32Array); for potentially better performance
     for (let i = 0; i < float32Array.length; i++) {
         clientPlaybackBuffer.push(float32Array[i]);
     }
@@ -276,17 +282,11 @@ function schedulePlayback() {
         isPlaying = true;
 
         // Determine chunk size to play
-        // Play up to 2x target duration to avoid too many small chunks if data arrives fast,
-        // but not less than MIN_SAMPLES_TO_START_PLAYBACK unless it's all that's left.
         const samplesToPlayCount = Math.min(clientPlaybackBuffer.length, Math.max(MIN_SAMPLES_TO_START_PLAYBACK, PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000) * 2));
-
-        // If buffer has less than MIN_SAMPLES_TO_START_PLAYBACK but is not empty, and we decided to play (e.g. end of stream),
-        // this logic might need adjustment, but current check `clientPlaybackBuffer.length >= MIN_SAMPLES_TO_START_PLAYBACK` handles this.
-
         const samplesToPlay = new Float32Array(clientPlaybackBuffer.splice(0, samplesToPlayCount));
 
         if (samplesToPlay.length === 0) {
-            isPlaying = false; // Should not happen if MIN_SAMPLES_TO_START_PLAYBACK > 0
+            isPlaying = false;
             return;
         }
 
@@ -299,56 +299,9 @@ function schedulePlayback() {
 
         audioPlaybackNode.onended = () => {
             isPlaying = false;
-            // Immediately try to schedule next chunk if more data is available
             schedulePlayback();
         };
 
         audioPlaybackNode.start();
     }
 }
-
-// Initial state
-endButton.disabled = true;
-
-// Theme Switching Logic
-document.addEventListener('DOMContentLoaded', () => {
-    const themeToggle = document.getElementById('theme-toggle');
-    const body = document.body;
-
-    function applyTheme(theme) {
-        if (theme === 'dark') {
-            body.classList.add('dark-mode');
-            if (themeToggle) themeToggle.checked = true;
-        } else { // 'light' or any other case
-            body.classList.remove('dark-mode');
-            if (themeToggle) themeToggle.checked = false;
-        }
-    }
-
-    if (themeToggle) {
-        themeToggle.addEventListener('change', () => {
-            if (themeToggle.checked) {
-                applyTheme('dark');
-                localStorage.setItem('theme', 'dark');
-            } else {
-                applyTheme('light');
-                localStorage.setItem('theme', 'light');
-            }
-        });
-    }
-
-    // Load saved theme on page load
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-        applyTheme(savedTheme);
-    } else {
-        // Default to light theme if no preference is saved
-        // Or, you could check for system preference here:
-        // if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        //     applyTheme('dark');
-        // } else {
-        //     applyTheme('light');
-        // }
-        applyTheme('light'); // Default to light for now
-    }
-});
