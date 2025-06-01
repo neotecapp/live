@@ -186,6 +186,11 @@ async function startSession() {
                     console.log('AI turn complete - flushing remaining audio');
                     audioStreamEnded = true;
                     flushRemainingAudio();
+                } else if (message.type === 'session_timeout') {
+                    console.log('Session timeout message received from server:', message.message);
+                    // Optionally, display a more user-friendly message on the UI, e.g., by updating a status div
+                    alert(message.message || 'Session ended due to inactivity.'); // Simple alert for now
+                    endSessionCleanup(); // Call existing cleanup function
                 }
             } catch (e) {
                 console.error("Failed to parse message from server or unknown message type:", event.data, e);
