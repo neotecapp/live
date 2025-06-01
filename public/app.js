@@ -148,6 +148,7 @@ async function startSession() {
                     console.log('Status from server:', message.message);
                     if (message.message === 'AI session opened.') {
                         // Session successfully started
+                        playSound('sounds/stream-start.ogg');
                         isSessionActive = true;
                         isLoadingSession = false;
                         sessionToggleButton.disabled = false;
@@ -204,6 +205,7 @@ function endSession() {
 }
 
 function endSessionCleanup() {
+    playSound('sounds/stream-end.ogg');
     console.log("Running cleanup...");
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -255,6 +257,20 @@ function base64ToArrayBuffer(base64) {
         bytes[i] = binaryString.charCodeAt(i);
     }
     return bytes.buffer;
+}
+
+function playSound(soundFile) {
+  try {
+    const audio = new Audio();
+    audio.src = soundFile;
+    audio.play();
+
+    audio.onerror = function() {
+      console.error("Error playing sound:", soundFile, audio.error);
+    };
+  } catch (e) {
+    console.error("Error creating or playing audio:", soundFile, e);
+  }
 }
 
 function queueAudio(arrayBuffer) {
