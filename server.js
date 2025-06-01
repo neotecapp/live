@@ -83,6 +83,7 @@ wss.on('connection', async (ws) => {
                         }
                         if (message.serverContent.interrupted) {
                             console.log('AI generation was interrupted.');
+                            ws.send(JSON.stringify({ type: 'interruption' }));
                         }
                     } else if (message.error) {
                         console.error('Live API Error:', message.error.message);

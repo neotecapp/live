@@ -123,6 +123,16 @@ async function startSession() {
                     console.error('Error from server:', message.message);
                     statusDiv.textContent = `Server Error: ${message.message}`;
                     endSession(); // Or handle more gracefully
+                } else if (message.type === 'interruption') {
+                    console.log('Interruption message received from server.');
+                    if (audioPlaybackNode) {
+                        audioPlaybackNode.stop();
+                        audioPlaybackNode.disconnect();
+                        audioPlaybackNode = null;
+                    }
+                    clientPlaybackBuffer = [];
+                    isPlaying = false;
+                    statusDiv.textContent = 'AI playback interrupted.';
                 }
             } catch (e) {
                 console.error("Failed to parse message from server or unknown message type:", event.data, e);
