@@ -66,20 +66,16 @@ wss.on('connection', async (ws) => {
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session opened.' }));
                 },
                 onmessage: (message) => {
-                    // This callback receives messages from the Live API
-                    // console.debug('Live API message:', JSON.stringify(message, null, 2));
                     if (message.data) { // Audio data from AI
-                        // The 'data' field contains base64 encoded audio
-                        // console.log('[AI -> Client] Sending audio data to client. Approximate size (base64):', message.data.length);
                         ws.send(JSON.stringify({ type: 'audio_data', data: message.data }));
                     } else if (message.serverContent) {
-                        // console.log('[AI -> Server] Received serverContent from AI:', JSON.stringify(message.serverContent, null, 2));
                         if (message.serverContent.outputTranscription) {
-                            // console.log('AI Output Transcription:', message.serverContent.outputTranscription.text);
                             // We are not displaying transcription in this app, but logging it.
                         }
                         if (message.serverContent.turnComplete) {
                             console.log('AI turn complete.');
+                            // Send turn complete message to client
+                            ws.send(JSON.stringify({ type: 'turn_complete' }));
                         }
                         if (message.serverContent.interrupted) {
                             console.log('AI generation was interrupted.');

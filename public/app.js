@@ -6,6 +6,8 @@ const body = document.body;
 // Session state variables
 let isSessionActive = false;
 let isLoadingSession = false;
+let audioStreamEnded = false;
+let pendingPlaybackTimeout = null;
 
 // Audio context and WebSocket variables
 let audioContext; // For microphone input processing AND playback
@@ -16,7 +18,7 @@ let webSocket;
 
 const TARGET_SAMPLE_RATE = 16000; // Still used by input-processor.js
 const PLAYBACK_SAMPLE_RATE = 24000; // Live API audio output is 24kHz
-const PLAYBACK_BUFFER_TARGET_DURATION_MS = 500; // Target 0.5 seconds of audio per playback chunk
+const PLAYBACK_BUFFER_TARGET_DURATION_MS = 1000; // Target 1 second of audio per playback chunk
 const MIN_SAMPLES_TO_START_PLAYBACK = PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000);
 
 // Audio playback state
@@ -158,7 +160,7 @@ async function startSession() {
                         sessionToggleButton.setAttribute('aria-label', 'End session');
                         console.log('Session started successfully');
                     } else if (message.message === 'AI session closed.') {
-                        if (isSessionActive) { // If we didn't initiate close
+                        if (isSessionActive) {
                             endSessionCleanup();
                         }
                     }
@@ -174,6 +176,16 @@ async function startSession() {
                     }
                     clientPlaybackBuffer = [];
                     isPlaying = false;
+                    audioStreamEnded = false;
+                    if (pendingPlaybackTimeout) {
+                        clearTimeout(pendingPlaybackTimeout);
+                        pendingPlaybackTimeout = null;
+                    }
+                } else if (message.type === 'turn_complete') {
+                    // New message type to indicate AI finished speaking
+                    console.log('AI turn complete - flushing remaining audio');
+                    audioStreamEnded = true;
+                    flushRemainingAudio();
                 }
             } catch (e) {
                 console.error("Failed to parse message from server or unknown message type:", event.data, e);
@@ -196,6 +208,37 @@ async function startSession() {
     }
 }
 
+function flushRemainingAudio() {
+    if (clientPlaybackBuffer.length > 0 && !isPlaying) {
+        playRemainingAudio();
+    }
+}
+
+function playRemainingAudio() {
+    if (!audioContext || audioContext.state !== 'running' || clientPlaybackBuffer.length === 0) {
+        return;
+    }
+
+    isPlaying = true;
+    
+    const samplesToPlay = new Float32Array(clientPlaybackBuffer);
+    clientPlaybackBuffer = [];
+
+    const audioBuffer = audioContext.createBuffer(1, samplesToPlay.length, PLAYBACK_SAMPLE_RATE);
+    audioBuffer.copyToChannel(samplesToPlay, 0);
+
+    audioPlaybackNode = audioContext.createBufferSource();
+    audioPlaybackNode.buffer = audioBuffer;
+    audioPlaybackNode.connect(audioContext.destination);
+
+    audioPlaybackNode.onended = () => {
+        isPlaying = false;
+        audioStreamEnded = false;
+    };
+
+    audioPlaybackNode.start();
+}
+
 function endSession() {
     if (webSocket && webSocket.readyState === WebSocket.OPEN) {
         webSocket.close(1000, "User ended session");
@@ -207,6 +250,15 @@ function endSession() {
 function endSessionCleanup() {
     playSound('sounds/stream-end.ogg');
     console.log("Running cleanup...");
+
+    // Clear any pending playback timeout
+    if (pendingPlaybackTimeout) {
+        clearTimeout(pendingPlaybackTimeout);
+        pendingPlaybackTimeout = null;
+    }
+    
+    audioStreamEnded = false;
+
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
@@ -291,14 +343,22 @@ function queueAudio(arrayBuffer) {
 
 function schedulePlayback() {
     if (isPlaying || !audioContext || audioContext.state !== 'running') {
-        return; // Already playing or audio context not ready
+        return;
+    }
+
+    // Clear any pending timeout
+    if (pendingPlaybackTimeout) {
+        clearTimeout(pendingPlaybackTimeout);
+        pendingPlaybackTimeout = null;
     }
 
     if (clientPlaybackBuffer.length >= MIN_SAMPLES_TO_START_PLAYBACK) {
         isPlaying = true;
 
-        // Determine chunk size to play
-        const samplesToPlayCount = Math.min(clientPlaybackBuffer.length, Math.max(MIN_SAMPLES_TO_START_PLAYBACK, PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000) * 2));
+        const samplesToPlayCount = Math.min(
+            clientPlaybackBuffer.length, 
+            Math.max(MIN_SAMPLES_TO_START_PLAYBACK, PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000) * 2)
+        );
         const samplesToPlay = new Float32Array(clientPlaybackBuffer.splice(0, samplesToPlayCount));
 
         if (samplesToPlay.length === 0) {
@@ -315,9 +375,22 @@ function schedulePlayback() {
 
         audioPlaybackNode.onended = () => {
             isPlaying = false;
-            schedulePlayback();
+            if (audioStreamEnded && clientPlaybackBuffer.length > 0) {
+                // If stream ended and there's still audio, play it
+                playRemainingAudio();
+            } else {
+                schedulePlayback();
+            }
         };
 
         audioPlaybackNode.start();
+    } else if (clientPlaybackBuffer.length > 0) {
+        // Set a timeout to play remaining audio if no new data arrives
+        pendingPlaybackTimeout = setTimeout(() => {
+            if (clientPlaybackBuffer.length > 0 && !isPlaying) {
+                console.log('Timeout reached, playing remaining audio:', clientPlaybackBuffer.length, 'samples');
+                playRemainingAudio();
+            }
+        }, 500); // Wait 500ms for more data before playing what we have
     }
 }
