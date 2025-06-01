@@ -211,8 +211,9 @@ body.dark-mode #theme-toggle:checked + .slider {
     left: 1.5rem;
     width: 50px;
     height: auto;
+    transition: filter 0.3s ease;
 }
 
 body.dark-mode #revolt-logo {
-    content: url("images/revolt_logo_white.png");
+    filter: invert(1) brightness(2);
 }
