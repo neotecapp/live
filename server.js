@@ -54,6 +54,7 @@ wss.on('connection', async (ws) => {
     console.log('Client connected via WebSocket');
     let liveSession;
     let isLiveSessionOpen = false;
+    let sessionTimeoutId = null;
 
     try {
         liveSession = await ai.live.connect({
@@ -64,6 +65,7 @@ wss.on('connection', async (ws) => {
                     console.log('Live API session opened.');
                     isLiveSessionOpen = true; // Set the flag
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session opened.' }));
+                    if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); sessionTimeoutId = null; console.log('Cleared existing session timer on new session open.'); }
                 },
                 onmessage: (message) => {
                     if (message.data) { // Audio data from AI
@@ -76,6 +78,13 @@ wss.on('connection', async (ws) => {
                             console.log('AI turn complete.');
                             // Send turn complete message to client
                             ws.send(JSON.stringify({ type: 'turn_complete' }));
+                            if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); }
+                            sessionTimeoutId = setTimeout(() => {
+                                console.log('Session timeout: 120 seconds of inactivity. Closing session.');
+                                ws.send(JSON.stringify({ type: 'session_timeout', message: 'Session ended due to 120 seconds of inactivity.' }));
+                                if (liveSession) { liveSession.close(); }
+                                sessionTimeoutId = null;
+                            }, 120000); // 120 seconds
                         }
                         if (message.serverContent.interrupted) {
                             console.log('AI generation was interrupted.');
@@ -94,11 +103,13 @@ wss.on('connection', async (ws) => {
                     if (liveSession) {
                         liveSession.close(); // Ensure close is called if it exists
                     }
+                    if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); sessionTimeoutId = null; console.log('Cleared session timer due to AI error.'); }
                 },
                 onclose: (e) => {
                     console.log('Live API session closed.', e ? e.reason : '');
                     isLiveSessionOpen = false; // Reset the flag
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session closed.' }));
+                    if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); sessionTimeoutId = null; console.log('Cleared session timer due to AI session close.'); }
                 },
             },
         });
@@ -159,6 +170,7 @@ wss.on('connection', async (ws) => {
             console.log('Closing Live API session due to client disconnect.');
             liveSession.close();
         }
+        if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); sessionTimeoutId = null; console.log('Cleared session timer due to WebSocket client disconnect.'); }
     });
 
     ws.on('error', (error) => {
@@ -166,6 +178,7 @@ wss.on('connection', async (ws) => {
         if (liveSession) {
             liveSession.close();
         }
+        if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); sessionTimeoutId = null; console.log('Cleared session timer due to WebSocket error.'); }
     });
 });
 
