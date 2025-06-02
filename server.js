@@ -65,7 +65,15 @@ wss.on('connection', async (ws) => {
                     console.log('Live API session opened.');
                     isLiveSessionOpen = true; // Set the flag
                     ws.send(JSON.stringify({ type: 'status', message: 'AI session opened.' }));
-                    if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); sessionTimeoutId = null; console.log('Cleared existing session timer on new session open.'); }
+                    if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); console.log('Cleared existing session timer on new session open.'); } // Existing line
+                    // Add the new timer start here
+                    sessionTimeoutId = setTimeout(() => {
+                        console.log('Session timeout: 120 seconds of inactivity after session opened. Closing session.');
+                        ws.send(JSON.stringify({ type: 'session_timeout', message: 'Session ended due to 120 seconds of inactivity.' }));
+                        if (liveSession) { liveSession.close(); }
+                        sessionTimeoutId = null;
+                    }, 120000); // 120 seconds
+                    console.log('Session timer started on AI session open.'); // Added log
                 },
                 onmessage: (message) => {
                     if (message.data) { // Audio data from AI
