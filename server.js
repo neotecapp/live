@@ -77,7 +77,11 @@ wss.on('connection', async (ws) => {
                 },
                 onmessage: (message) => {
                     if (message.data) { // Audio data from AI
-                        ws.send(JSON.stringify({ type: 'audio_data', data: message.data }));
+                        // Send audio as binary with a type prefix
+                        const audioBuffer = Buffer.from(message.data, 'base64');
+                        const typeBuffer = Buffer.from([0x01]); // 0x01 = audio data
+                        const combinedBuffer = Buffer.concat([typeBuffer, audioBuffer]);
+                        ws.send(combinedBuffer);
                     } else if (message.serverContent) {
                         if (message.serverContent.outputTranscription) {
                             // We are not displaying transcription in this app, but logging it.
@@ -85,7 +89,8 @@ wss.on('connection', async (ws) => {
                         if (message.serverContent.turnComplete) {
                             console.log('AI turn complete.');
                             // Send turn complete message to client
-                            ws.send(JSON.stringify({ type: 'turn_complete' }));
+                            const typeBuffer = Buffer.from([0x02]); // 0x02 = turn complete
+                            ws.send(typeBuffer);
                             if (sessionTimeoutId) { clearTimeout(sessionTimeoutId); }
                             sessionTimeoutId = setTimeout(() => {
                                 console.log('Session timeout: 120 seconds of inactivity. Closing session.');
@@ -96,7 +101,8 @@ wss.on('connection', async (ws) => {
                         }
                         if (message.serverContent.interrupted) {
                             console.log('AI generation was interrupted.');
-                            ws.send(JSON.stringify({ type: 'interruption' }));
+                            const typeBuffer = Buffer.from([0x03]); // 0x03 = interruption
+                            ws.send(typeBuffer);
                         }
                     } else if (message.error) {
                         console.error('Live API Error:', message.error.message);
