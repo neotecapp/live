@@ -18,13 +18,10 @@ let webSocket;
 
 const TARGET_SAMPLE_RATE = 16000; // Still used by input-processor.js
 const PLAYBACK_SAMPLE_RATE = 24000; // Live API audio output is 24kHz
-const PLAYBACK_BUFFER_TARGET_DURATION_MS = 1000; // Target 1 second of audio per playback chunk
-const MIN_SAMPLES_TO_START_PLAYBACK = PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000);
 
-// Audio playback state
-let clientPlaybackBuffer = []; // Stores Float32 samples for playback
-let isPlaying = false;
-let audioPlaybackNode; // To keep track of the current source node for playback
+// Audio scheduling variables
+let nextStartTime = 0;
+let activeSources = new Set();
 
 // --- Theme Toggle Functionality ---
 function applyTheme(theme) {
@@ -140,12 +137,47 @@ async function startSession() {
             console.log('WebSocket connection established.');
         };
 
+        webSocket.binaryType = 'arraybuffer';
+        
         webSocket.onmessage = (event) => {
             try {
-                const message = JSON.parse(event.data);
+                if (event.data instanceof ArrayBuffer) {
+                    // Binary message
+                    const view = new DataView(event.data);
+                    const messageType = view.getUint8(0);
+                    
+                    if (messageType === 0x01) { // Audio data
+                        const audioData = event.data.slice(1);
+                        queueAudio(audioData);
+                    } else if (messageType === 0x02) { // Turn complete
+                        console.log('AI turn complete - flushing remaining audio');
+                        audioStreamEnded = true;
+                        flushRemainingAudio();
+                    } else if (messageType === 0x03) { // Interruption
+                        console.log('Interruption message received from server.');
+                        
+                        // Stop all active audio sources immediately
+                        for (const source of activeSources) {
+                            try {
+                                source.stop();
+                            } catch (e) {
+                                // Source may have already ended
+                            }
+                        }
+                        activeSources.clear();
+                        nextStartTime = 0;
+                        audioStreamEnded = false;
+                        if (pendingPlaybackTimeout) {
+                            clearTimeout(pendingPlaybackTimeout);
+                            pendingPlaybackTimeout = null;
+                        }
+                    }
+                } else {
+                    // JSON message (for status and error messages)
+                    const message = JSON.parse(event.data);
                 if (message.type === 'audio_data') {
-                    const audioData = base64ToArrayBuffer(message.data);
-                    queueAudio(audioData);
+                    // This case is now handled in binary messages above
+                    console.warn('Received audio_data as JSON, expected binary');
                 } else if (message.type === 'status') {
                     console.log('Status from server:', message.message);
                     if (message.message === 'AI session opened.') {
@@ -168,29 +200,17 @@ async function startSession() {
                     console.error('Error from server:', message.message);
                     endSession();
                 } else if (message.type === 'interruption') {
-                    console.log('Interruption message received from server.');
-                    if (audioPlaybackNode) {
-                        audioPlaybackNode.stop();
-                        audioPlaybackNode.disconnect();
-                        audioPlaybackNode = null;
-                    }
-                    clientPlaybackBuffer = [];
-                    isPlaying = false;
-                    audioStreamEnded = false;
-                    if (pendingPlaybackTimeout) {
-                        clearTimeout(pendingPlaybackTimeout);
-                        pendingPlaybackTimeout = null;
-                    }
+                    // This case is now handled in binary messages above
+                    console.warn('Received interruption as JSON, expected binary');
                 } else if (message.type === 'turn_complete') {
-                    // New message type to indicate AI finished speaking
-                    console.log('AI turn complete - flushing remaining audio');
-                    audioStreamEnded = true;
-                    flushRemainingAudio();
+                    // This case is now handled in binary messages above
+                    console.warn('Received turn_complete as JSON, expected binary');
                 } else if (message.type === 'session_timeout') {
                     console.log('Session timeout message received from server:', message.message);
                     // Optionally, display a more user-friendly message on the UI, e.g., by updating a status div
                     alert(message.message || 'Session ended due to inactivity.'); // Simple alert for now
                     endSessionCleanup(); // Call existing cleanup function
+                }
                 }
             } catch (e) {
                 console.error("Failed to parse message from server or unknown message type:", event.data, e);
@@ -214,35 +234,11 @@ async function startSession() {
 }
 
 function flushRemainingAudio() {
-    if (clientPlaybackBuffer.length > 0 && !isPlaying) {
-        playRemainingAudio();
-    }
+    // No longer needed with immediate playback
+    audioStreamEnded = false;
 }
 
-function playRemainingAudio() {
-    if (!audioContext || audioContext.state !== 'running' || clientPlaybackBuffer.length === 0) {
-        return;
-    }
-
-    isPlaying = true;
-    
-    const samplesToPlay = new Float32Array(clientPlaybackBuffer);
-    clientPlaybackBuffer = [];
-
-    const audioBuffer = audioContext.createBuffer(1, samplesToPlay.length, PLAYBACK_SAMPLE_RATE);
-    audioBuffer.copyToChannel(samplesToPlay, 0);
-
-    audioPlaybackNode = audioContext.createBufferSource();
-    audioPlaybackNode.buffer = audioBuffer;
-    audioPlaybackNode.connect(audioContext.destination);
-
-    audioPlaybackNode.onended = () => {
-        isPlaying = false;
-        audioStreamEnded = false;
-    };
-
-    audioPlaybackNode.start();
-}
+// playRemainingAudio function removed - no longer needed with immediate playback
 
 function endSession() {
     if (webSocket && webSocket.readyState === WebSocket.OPEN) {
@@ -279,14 +275,16 @@ function endSessionCleanup() {
         mediaStreamSource = null;
     }
 
-    // Stop any ongoing playback and clear queue
-    if (audioPlaybackNode) {
-        audioPlaybackNode.stop();
-        audioPlaybackNode.disconnect();
-        audioPlaybackNode = null;
+    // Stop all active audio sources
+    for (const source of activeSources) {
+        try {
+            source.stop();
+        } catch (e) {
+            // Source may have already ended
+        }
     }
-    clientPlaybackBuffer = [];
-    isPlaying = false;
+    activeSources.clear();
+    nextStartTime = 0;
 
     if (audioContext && audioContext.state !== 'closed') {
         audioContext.close().then(() => {
@@ -306,15 +304,7 @@ function endSessionCleanup() {
     console.log('Session ended and cleaned up.');
 }
 
-function base64ToArrayBuffer(base64) {
-    const binaryString = window.atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-}
+// base64ToArrayBuffer removed - now using binary WebSocket messages
 
 function playSound(soundFile) {
   try {
@@ -330,72 +320,38 @@ function playSound(soundFile) {
   }
 }
 
-function queueAudio(arrayBuffer) {
+async function queueAudio(arrayBuffer) {
+    if (!audioContext || audioContext.state !== 'running') {
+        return;
+    }
+    
     // The received audio is 16-bit PCM, 24kHz, mono.
     const int16Array = new Int16Array(arrayBuffer);
     const float32Array = new Float32Array(int16Array.length);
     for (let i = 0; i < int16Array.length; i++) {
         float32Array[i] = int16Array[i] / 32768.0; // Convert to [-1.0, 1.0] range
     }
-
-    // Add new samples to the global playback buffer
-    for (let i = 0; i < float32Array.length; i++) {
-        clientPlaybackBuffer.push(float32Array[i]);
-    }
-
-    schedulePlayback(); // Attempt to play if conditions are met
+    
+    // Initialize nextStartTime if needed
+    nextStartTime = Math.max(nextStartTime, audioContext.currentTime);
+    
+    // Create audio buffer
+    const audioBuffer = audioContext.createBuffer(1, float32Array.length, PLAYBACK_SAMPLE_RATE);
+    audioBuffer.copyToChannel(float32Array, 0);
+    
+    // Create and schedule source
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    
+    source.addEventListener('ended', () => {
+        activeSources.delete(source);
+    });
+    
+    // Schedule with precise timing
+    source.start(nextStartTime);
+    nextStartTime += audioBuffer.duration;
+    activeSources.add(source);
 }
 
-function schedulePlayback() {
-    if (isPlaying || !audioContext || audioContext.state !== 'running') {
-        return;
-    }
-
-    // Clear any pending timeout
-    if (pendingPlaybackTimeout) {
-        clearTimeout(pendingPlaybackTimeout);
-        pendingPlaybackTimeout = null;
-    }
-
-    if (clientPlaybackBuffer.length >= MIN_SAMPLES_TO_START_PLAYBACK) {
-        isPlaying = true;
-
-        const samplesToPlayCount = Math.min(
-            clientPlaybackBuffer.length, 
-            Math.max(MIN_SAMPLES_TO_START_PLAYBACK, PLAYBACK_SAMPLE_RATE * (PLAYBACK_BUFFER_TARGET_DURATION_MS / 1000) * 2)
-        );
-        const samplesToPlay = new Float32Array(clientPlaybackBuffer.splice(0, samplesToPlayCount));
-
-        if (samplesToPlay.length === 0) {
-            isPlaying = false;
-            return;
-        }
-
-        const audioBuffer = audioContext.createBuffer(1, samplesToPlay.length, PLAYBACK_SAMPLE_RATE);
-        audioBuffer.copyToChannel(samplesToPlay, 0);
-
-        audioPlaybackNode = audioContext.createBufferSource();
-        audioPlaybackNode.buffer = audioBuffer;
-        audioPlaybackNode.connect(audioContext.destination);
-
-        audioPlaybackNode.onended = () => {
-            isPlaying = false;
-            if (audioStreamEnded && clientPlaybackBuffer.length > 0) {
-                // If stream ended and there's still audio, play it
-                playRemainingAudio();
-            } else {
-                schedulePlayback();
-            }
-        };
-
-        audioPlaybackNode.start();
-    } else if (clientPlaybackBuffer.length > 0) {
-        // Set a timeout to play remaining audio if no new data arrives
-        pendingPlaybackTimeout = setTimeout(() => {
-            if (clientPlaybackBuffer.length > 0 && !isPlaying) {
-                console.log('Timeout reached, playing remaining audio:', clientPlaybackBuffer.length, 'samples');
-                playRemainingAudio();
-            }
-        }, 500); // Wait 500ms for more data before playing what we have
-    }
-}
+// schedulePlayback function removed - audio is now played immediately in queueAudio
