@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const { GoogleGenAI, Modality } = require('@google/genai');
+require('dotenv').config();
 // const { WaveFile } = require('wavefile'); // For potential server-side audio processing/debugging
 
 const PORT = process.env.PORT || 3000;
