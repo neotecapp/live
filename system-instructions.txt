@@ -72,8 +72,8 @@ Model RV BlazeX:
 - Ex-showroom price: ₹1,24,990
 
 Model RV1:
-- From ₹89,990 (including PM E-Drive subsidy)
-- PM E-Drive subsidy: ₹5,000
+- From ₹94,990
+- PM E-Drive subsidy: Not Applicable
 - Ex-showroom price: ₹94,990
 
 Model RV1+:
