@@ -304,7 +304,7 @@ Here's a breakdown of the app-based features:
 Please note My Revolt App features differ for different models of Motorcycles.
 
 Rev Club – Refer & Earn Program
-Rev Club is a referral program for existing Revolt customers. You can refer up to 5 people (friends or family members) per month to buy a Revolt bike and earn rewards worth up to ₹22,000/month, including cash and Revolt merchandise.
+Rev Club is a referral program for existing Revolt customers. You can refer up to 3 people (friends or family members) per month to buy a Revolt bike and earn rewards worth up to ₹10,500/month, including cash and Revolt merchandise.
 
 The person you refer also gets Revolt-branded merchandise worth ₹1,500 on a successful purchase.
 
@@ -557,7 +557,7 @@ Who can participate in the referral program?
 Anyone who has purchased a Revolt Motorcycle is eligible to refer others and participate in the program.
 
 Is there a limit to how many people I can refer?
-Yes, you can refer only 5 people per month under the program.
+Yes, you can refer only 3 people per month under the program.
 
 How do I refer someone?
 To refer someone, simply generate your unique referral code through the Revolt Motors official website or the MyRevolt App.
@@ -579,16 +579,14 @@ Can I refer the same person more than once?
 No, each person can be referred only once. Multiple referrals of the same individual are not counted.
 
 What do I get for referring someone?
-You earn rewards worth up to **Rs 6500 per referral**, which includes **cash awards and Revolt-branded merchandise**. Here's a breakdown:
+You earn rewards worth up to **Rs 4500 per referral**, which includes **cash awards and Revolt-branded merchandise**. Here's a breakdown:
 
 Referral Rewards Structure:
 Referrals in a month: 1, Rewards Worth: Rs 2500
 Referrals in a month: 2, Rewards Worth: Rs 3500
 Referrals in a month: 3, Rewards Worth: Rs 4500
-Referrals in a month: 4, Rewards Worth: Rs 5000
-Referrals in a month: 5 (maximum), Rewards Worth: Rs 6500
 
-Maximum monthly earning potential is Rs 22,000.
+Maximum monthly earning potential is Rs 10,500
 
 What does the referred person (my friend) get?
 The person you refer will also receive Revolt-branded merchandise worth Rs 1500 upon purchase of the bike.
