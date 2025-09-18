@@ -284,21 +284,27 @@ My Revolt App Features:
 The "My Revolt" app is designed to enhance the riding experience and provide riders with a range of features accessible right from their smartphones.
 Here's a breakdown of the app-based features:
 - Swipe to Start:
+  - Available only in RV400 model.
   - Description: This feature allows riders to start the motorcycle with a simple swipe on the app. It eliminates the need for a physical key and provides a modern and convenient way to activate the motorcycle.
   - Benefits: Convenience is the key advantage here, as riders can start their motorcycles remotely, saving time and effort.
 - Voice Command:
+  - Available only in RV400 model.
   - Description: The Voice Command feature enables riders to control certain functions of the motorcycle using voice commands through the app.
   - Benefits: It offers hands-free operation, allowing riders to focus on the road while still accessing essential functions of the motorcycle.
 - Track Your Ride History:
+  - Available in RV400 and RV BlazeX models.
   - Description: The app stores data about the rider's past rides, including routes taken, distances travelled, and ride duration.
   - Benefits: Riders can review their ride history to analyze their riding patterns, track mileage, and plan future journeys. It's a handy tool for both recreational and commuting purposes.
 - Change Sound:
+  - Available only in RV400 model.
   - Description: This feature allows riders to customize the sound of their motorcycle through the app. Riders can select from different sound profiles to suit their preferences.
   - Benefits: Customizing the sound adds a personal touch to the riding experience. It also allows riders to adjust the sound based on their mood or environment.
 - Geo-Fencing:
+  - Available in RV400 and RV BlazeX models.
   - Description: Geo-fencing is a virtual boundary feature that allows riders to set geographical boundaries for their motorcycle using the app.
   - Benefits: When the motorcycle moves outside the designated area, the app sends alerts to the rider. It's a useful security feature, providing notifications if the motorcycle is moved without authorization.
 - Battery Health Status:
+  - Available in RV400 and RV BlazeX models.
   - Description: The app provides real-time information about the battery health of the motorcycle.
   - Benefits: Riders can monitor the battery status to ensure it's in optimal condition. This feature helps in planning rides, especially for longer journeys, by knowing the battery's capacity.
 
